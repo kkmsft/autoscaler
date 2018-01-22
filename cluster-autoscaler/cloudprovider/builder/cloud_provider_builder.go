@@ -23,6 +23,7 @@ import (
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/azure"
+	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/azure/acs"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/gce"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider/kubemark"
 	"k8s.io/client-go/informers"
@@ -37,7 +38,10 @@ import (
 // AvailableCloudProviders supported by the cloud provider builder.
 var AvailableCloudProviders = []string{
 	aws.ProviderName,
-	azure.ProviderName,
+	azure.ProviderNameVMSS,
+	azure.ProviderNameStandard,
+	azure.ProviderNameACS,
+	azure.ProviderNameAKS,
 	gce.ProviderNameGCE,
 	gce.ProviderNameGKE,
 	kubemark.ProviderName,
@@ -81,8 +85,14 @@ func (b CloudProviderBuilder) Build(discoveryOpts cloudprovider.NodeGroupDiscove
 		return b.buildGCE(discoveryOpts, resourceLimiter, gce.ModeGKE)
 	case aws.ProviderName:
 		return b.buildAWS(discoveryOpts, resourceLimiter)
-	case azure.ProviderName:
-		return b.buildAzure(discoveryOpts, resourceLimiter)
+	case azure.ProviderNameVMSS:
+		return b.buildAzure(discoveryOpts, resourceLimiter, azure.ModeVMSS)
+	case azure.ProviderNameStandard:
+		return b.buildAzure(discoveryOpts, resourceLimiter, azure.ModeStandard)
+	case azure.ProviderNameACS:
+		return b.buildAzure(discoveryOpts, resourceLimiter, azure.ModeACS)
+	case azure.ProviderNameAKS:
+		return b.buildAzure(discoveryOpts, resourceLimiter, azure.ModeAKS)
 	case kubemark.ProviderName:
 		return b.buildKubemark(discoveryOpts, resourceLimiter)
 	case "":
@@ -142,7 +152,7 @@ func (b CloudProviderBuilder) buildAWS(do cloudprovider.NodeGroupDiscoveryOption
 	return provider
 }
 
-func (b CloudProviderBuilder) buildAzure(do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {
+func (b CloudProviderBuilder) buildAzure(do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter, mode azure.AzureCloudProviderMode) cloudprovider.CloudProvider {
 	var config io.ReadCloser
 	if b.cloudConfig != "" {
 		glog.Info("Creating Azure Manager using cloud-config file: %v", b.cloudConfig)
@@ -155,15 +165,31 @@ func (b CloudProviderBuilder) buildAzure(do cloudprovider.NodeGroupDiscoveryOpti
 	} else {
 		glog.Info("Creating Azure Manager with default configuration.")
 	}
-	manager, err := azure.CreateAzureManager(config, do)
-	if err != nil {
-		glog.Fatalf("Failed to create Azure Manager: %v", err)
+
+	switch mode {
+		case azure.ModeVMSS:
+		case azure.ModeStandard:
+			manager, err := azure.CreateAzureManager(config, do)
+			if err != nil {
+				glog.Fatalf("Failed to create Azure Manager: %v", err)
+			}
+			provider, err := azure.BuildAzureCloudProvider(manager, rl)
+			if err != nil {
+				glog.Fatalf("Failed to create Azure cloud provider: %v", err)
+			}
+			return provider
+		case azure.ModeACS:
+		case azure.ModeAKS:
+			manager, err = acs.CreateAcsManager(nil, mode)
+			if acsError != nil {
+				glog.Fatalf("Failed to create Azure manager: %v", err)
+			}
+			provider, err = acs.BuildAcsCloudProvider(manager, do, tl)
+			if err != nil {
+				glog.Fatalf("Failed to create %s cloud provider", b.cloudProviderFlag)
+			}
+			return provider
 	}
-	provider, err := azure.BuildAzureCloudProvider(manager, rl)
-	if err != nil {
-		glog.Fatalf("Failed to create Azure cloud provider: %v", err)
-	}
-	return provider
 }
 
 func (b CloudProviderBuilder) buildKubemark(do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {

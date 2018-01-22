@@ -28,8 +28,20 @@ import (
 )
 
 const (
-	// ProviderName is the cloud provider name for Azure
-	ProviderName = "azure"
+	ProviderNameVMSS = "azure-vmss"
+	ProviderNameStandard = "azure-standard"
+	ProviderNameACS = "acs"
+	ProviderNameAKS = "aks"
+)
+
+// AzureCloudProviderMode allows to pass information whether the cluster is VMSS based, Standard, acs or aks
+type AzureCloudProviderMode string
+
+const (
+	ModeVMSS AzureCloudProviderMode = "azure-vmss"
+	ModeStandard AzureCloudProviderMode = "azure-standard"
+	ModeACS AzureCloudProviderMode = "acs"
+	ModeAKS AzureCloudProviderMode = "aks"
 )
 
 // AzureCloudProvider provides implementation of CloudProvider interface for Azure.
