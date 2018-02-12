@@ -24,7 +24,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
+	autoscalerazure "k8s.io/autoscaler/cluster-autoscaler/cloudprovider/azure"
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/Azure/azure-sdk-for-go/arm/containerservice"
 	"github.com/Azure/go-autorest/autorest"	
@@ -56,7 +56,7 @@ type AcsManagerAPIs interface {
 
 // AcsManager bring together all internal operations.
 type AcsManager struct {
-	ServiceType     string
+	ServiceType     autoscalerazure.AzureCloudProviderMode
 	NodeResource    string
 	Config          Configuration
 	VMClient        compute.VirtualMachinesClient
@@ -79,7 +79,7 @@ type Configuration struct {
 	Location          string `json:"location" yaml:"location"`
 }
 
-/*
+
 func withInspection() autorest.PrepareDecorator {
 	return func(p autorest.Preparer) autorest.Preparer {
 		return autorest.PreparerFunc(func(r *http.Request) (*http.Request, error) {
@@ -89,6 +89,7 @@ func withInspection() autorest.PrepareDecorator {
 	}
 }
 
+/*
 func byInspecting() autorest.RespondDecorator {
 	return func(r autorest.Responder) autorest.Responder {
 		return autorest.ResponderFunc(func(resp *http.Response) error {
@@ -100,7 +101,7 @@ func byInspecting() autorest.RespondDecorator {
 */
 
 // CreateAcsManager We will get either "acs" or "aks" in the serviceType
-func CreateAcsManager(configReader io.Reader, serviceType string) (*AcsManager, error) {
+func CreateAcsManager(configReader io.Reader, serviceType autoscalerazure.AzureCloudProviderMode) (*AcsManager, error) {
     if configReader != nil {
 	    var cfg Configuration
 		if err := gcfg.ReadInto(&cfg, configReader); err != nil {
@@ -207,7 +208,7 @@ func (acsMgr *AcsManager) GetResourceForService() string {
 	location := acsMgr.Config.Location
 
 	// TODO: Assert for value not ACS/AKS
-	if serviceType == ACS {
+	if serviceType == autoscalerazure.ProviderNameACS {
 		return resourceGroup + "_" + clusterName + "_" + location
 	}
 	return "MC_" + resourceGroup + "_" + clusterName + "_" + location

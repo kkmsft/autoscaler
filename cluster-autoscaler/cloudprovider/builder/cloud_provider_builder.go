@@ -180,16 +180,17 @@ func (b CloudProviderBuilder) buildAzure(do cloudprovider.NodeGroupDiscoveryOpti
 			return provider
 		case azure.ModeACS:
 		case azure.ModeAKS:
-			manager, err = acs.CreateAcsManager(nil, mode)
-			if acsError != nil {
+			manager, err := acs.CreateAcsManager(nil, mode)
+			if err != nil {
 				glog.Fatalf("Failed to create Azure manager: %v", err)
 			}
-			provider, err = acs.BuildAcsCloudProvider(manager, do, tl)
+			provider, err := acs.BuildAcsCloudProvider(manager, do, rl)
 			if err != nil {
 				glog.Fatalf("Failed to create %s cloud provider", b.cloudProviderFlag)
 			}
 			return provider
 	}
+	return nil
 }
 
 func (b CloudProviderBuilder) buildKubemark(do cloudprovider.NodeGroupDiscoveryOptions, rl *cloudprovider.ResourceLimiter) cloudprovider.CloudProvider {

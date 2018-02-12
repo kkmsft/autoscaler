@@ -138,7 +138,7 @@ type AcsCloudProvider struct {
 	resourceLimiter *cloudprovider.ResourceLimiter
 }
 
-func BuildAcsCloudProvider(acsMgr *AcsManager, specs []string, resourceLimiter *cloudprovider.ResourceLimiter) (*AcsCloudProvider, error) {
+func BuildAcsCloudProvider(acsMgr *AcsManager, discoveryOpts cloudprovider.NodeGroupDiscoveryOptions, resourceLimiter *cloudprovider.ResourceLimiter) (*AcsCloudProvider, error) {
 
 	agentPool, err := acsMgr.CreateAgentPool()
 	if err != nil {
@@ -155,7 +155,7 @@ func BuildAcsCloudProvider(acsMgr *AcsManager, specs []string, resourceLimiter *
 }
 
 func (acs *AcsCloudProvider) Name() string {
-	return acs.acsManager.ServiceType
+	return string(acs.acsManager.ServiceType)
 }
 
 func (acs *AcsCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
