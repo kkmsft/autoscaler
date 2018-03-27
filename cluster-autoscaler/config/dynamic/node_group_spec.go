@@ -43,7 +43,6 @@ func SpecFromString(value string, SupportScaleToZero bool) (*NodeGroupSpec, erro
 
 	spec := NodeGroupSpec{SupportScaleToZero: SupportScaleToZero}
 	if size, err := strconv.Atoi(tokens[0]); err == nil {
-
 		spec.MinSize = size
 	} else {
 		return nil, fmt.Errorf("failed to set min size: %s, expected integer", tokens[0])

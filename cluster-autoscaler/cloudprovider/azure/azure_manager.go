@@ -35,6 +35,8 @@ import (
 const (
 	vmTypeVMSS     = "vmss"
 	vmTypeStandard = "standard"
+	vmTypeACS      = "acs"
+	vmTypeAKS      = "aks"
 
 	scaleToZeroSupported = false
 	refreshInterval      = 1 * time.Minute
@@ -72,6 +74,9 @@ type Config struct {
 	// Configs only for standard vmType (agent pools).
 	Deployment           string                 `json:"deployment" yaml:"deployment"`
 	DeploymentParameters map[string]interface{} `json:"deploymentParameters" yaml:"deploymentParameters"`
+
+	//Configs only for ACS/AKS
+	ClusterName          string                 `json:"clusterName" yaml:"clusterName"`
 }
 
 // TrimSpace removes all leading and trailing white spaces.
@@ -86,6 +91,7 @@ func (c *Config) TrimSpace() {
 	c.AADClientCertPath = strings.TrimSpace(c.AADClientCertPath)
 	c.AADClientCertPassword = strings.TrimSpace(c.AADClientCertPassword)
 	c.Deployment = strings.TrimSpace(c.Deployment)
+	c.ClusterName = strings.TrimSpace(c.ClusterName)
 }
 
 // CreateAzureManager creates Azure Manager object to work with Azure.
@@ -109,6 +115,7 @@ func CreateAzureManager(configReader io.Reader, discoveryOpts cloudprovider.Node
 		cfg.AADClientCertPath = os.Getenv("ARM_CLIENT_CERT_PATH")
 		cfg.AADClientCertPassword = os.Getenv("ARM_CLIENT_CERT_PASSWORD")
 		cfg.Deployment = os.Getenv("ARM_DEPLOYMENT")
+		cfg.ClusterName = so.Getenv("AZURE_CONTAINER_SVC_NAME")
 
 		useManagedIdentityExtensionFromEnv := os.Getenv("ARM_USE_MANAGED_IDENTITY_EXTENSION")
 		if len(useManagedIdentityExtensionFromEnv) > 0 {
@@ -219,6 +226,9 @@ func (m *AzureManager) buildAsgFromSpec(spec string) (cloudprovider.NodeGroup, e
 		return NewAgentPool(s, m)
 	case vmTypeVMSS:
 		return NewScaleSet(s, m)
+	case vmTypeACS:
+	case vmTypeAKS:
+		return NewContainerSvcAgentPool(s, m)
 	default:
 		return nil, fmt.Errorf("vmtype %s not supported", m.config.VMType)
 	}

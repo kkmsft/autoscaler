@@ -86,6 +86,7 @@ type azClient struct {
 	interfacesClient                InterfacesClient
 	disksClient                     DisksClient
 	storageAccountsClient           AccountsClient
+	conatinerServicesClient         ContainerServicesClient
 }
 
 // newServicePrincipalTokenFromCredentials creates a new ServicePrincipalToken using values of the
@@ -188,6 +189,8 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 	disksClient.Authorizer = autorest.NewBearerAuthorizer(spt)
 	disksClient.PollingDelay = 5 * time.Second
 	glog.V(5).Infof("Created disks client with authorizer: %v", disksClient)
+
+	
 
 	return &azClient{
 		disksClient:                     disksClient,

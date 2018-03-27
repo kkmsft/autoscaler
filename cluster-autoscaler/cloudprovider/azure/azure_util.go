@@ -405,6 +405,12 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
+	if cfg.VMType == vmTypeACS || cfg.VMType == vmTypeAKS {
+		if cfg.ClusterName == "" {
+			return fmt.Errorf("Cluster name not set for type %+v", cfg.VMType)
+		}
+	}
+
 	return nil
 }
 
