@@ -78,6 +78,12 @@ type AccountsClient interface {
 	ListKeys(resourceGroupName string, accountName string) (result storage.AccountListKeysResult, err error)
 }
 
+// ContainerServicesClient defines the needed functions from azure compute.ContainerServicesClient
+type ContainerServicesClient interface {
+	Get(resourceGroupName string, containerServiceName string) (result compute.ContainerService, err error)
+        CreateOrUpdate(resourceGroupName string, containerServiceName string, parameters compute.ContainerService, cancel <-chan struct{}) (<-chan compute.ContainerService, <-chan error)
+}
+
 type azClient struct {
 	virtualMachineScaleSetsClient   VirtualMachineScaleSetsClient
 	virtualMachineScaleSetVMsClient VirtualMachineScaleSetVMsClient
@@ -86,7 +92,7 @@ type azClient struct {
 	interfacesClient                InterfacesClient
 	disksClient                     DisksClient
 	storageAccountsClient           AccountsClient
-	conatinerServicesClient         ContainerServicesClient
+	containerServicesClient         ContainerServicesClient
 }
 
 // newServicePrincipalTokenFromCredentials creates a new ServicePrincipalToken using values of the
@@ -190,7 +196,10 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 	disksClient.PollingDelay = 5 * time.Second
 	glog.V(5).Infof("Created disks client with authorizer: %v", disksClient)
 
-	
+	containerServicesClient :=  compute.NewContainerServicesClient(cfg.SubscriptionID)
+        containerServicesClient.Authorizer = autorest.NewBearerAuthorizer(spt)
+        containerServicesClient.Sender = autorest.CreateSender()
+	glog.V(5).Infof("Created Container services client with authorizer: %v", containerServicesClient)
 
 	return &azClient{
 		disksClient:                     disksClient,
@@ -200,5 +209,7 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 		deploymentsClient:               deploymentsClient,
 		virtualMachinesClient:           virtualMachinesClient,
 		storageAccountsClient:           storageAccountsClient,
+		containerServicesClient:	 containerServicesClient,
+
 	}, nil
 }

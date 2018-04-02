@@ -77,6 +77,7 @@ type Config struct {
 
 	//Configs only for ACS/AKS
 	ClusterName          string                 `json:"clusterName" yaml:"clusterName"`
+	Location             string                 `json:"location" yaml:"location"`
 }
 
 // TrimSpace removes all leading and trailing white spaces.
@@ -115,7 +116,8 @@ func CreateAzureManager(configReader io.Reader, discoveryOpts cloudprovider.Node
 		cfg.AADClientCertPath = os.Getenv("ARM_CLIENT_CERT_PATH")
 		cfg.AADClientCertPassword = os.Getenv("ARM_CLIENT_CERT_PASSWORD")
 		cfg.Deployment = os.Getenv("ARM_DEPLOYMENT")
-		cfg.ClusterName = so.Getenv("AZURE_CONTAINER_SVC_NAME")
+		cfg.ClusterName = os.Getenv("AZURE_CONTAINER_SERVICE_NAME")
+		cfg.Location = os.Getenv("AZURE_CONTAINER_SERVICE_LOCATION")
 
 		useManagedIdentityExtensionFromEnv := os.Getenv("ARM_USE_MANAGED_IDENTITY_EXTENSION")
 		if len(useManagedIdentityExtensionFromEnv) > 0 {
@@ -227,8 +229,9 @@ func (m *AzureManager) buildAsgFromSpec(spec string) (cloudprovider.NodeGroup, e
 	case vmTypeVMSS:
 		return NewScaleSet(s, m)
 	case vmTypeACS:
+		fallthrough
 	case vmTypeAKS:
-		return NewContainerSvcAgentPool(s, m)
+		return NewContainerServiceAgentPool(s, m)
 	default:
 		return nil, fmt.Errorf("vmtype %s not supported", m.config.VMType)
 	}
@@ -336,6 +339,9 @@ func (m *AzureManager) getFilteredAutoscalingGroups(filter []cloudprovider.Label
 		asgs, err = m.listScaleSets(filter)
 	case vmTypeStandard:
 		asgs, err = m.listAgentPools(filter)
+	case vmTypeACS:
+	case vmTypeAKS:
+		return nil, nil
 	default:
 		err = fmt.Errorf("vmType %q not supported", m.config.VMType)
 	}
