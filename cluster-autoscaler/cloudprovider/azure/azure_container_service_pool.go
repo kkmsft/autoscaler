@@ -18,10 +18,11 @@ package azure
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang/glog"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	apiv1 "k8s.io/api/core/v1"

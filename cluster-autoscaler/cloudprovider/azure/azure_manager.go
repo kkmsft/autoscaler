@@ -27,7 +27,6 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/golang/glog"
 
-	"gopkg.in/gcfg.v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 )
@@ -76,8 +75,8 @@ type Config struct {
 	DeploymentParameters map[string]interface{} `json:"deploymentParameters" yaml:"deploymentParameters"`
 
 	//Configs only for ACS/AKS
-	ClusterName          string                 `json:"clusterName" yaml:"clusterName"`
-	Location             string                 `json:"location" yaml:"location"`
+	ClusterName string `json:"clusterName" yaml:"clusterName"`
+	Location    string `json:"location" yaml:"location"`
 }
 
 // TrimSpace removes all leading and trailing white spaces.

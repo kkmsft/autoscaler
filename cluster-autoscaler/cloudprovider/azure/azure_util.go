@@ -406,6 +406,7 @@ func validateConfig(cfg *Config) error {
 	}
 
 	if cfg.VMType == vmTypeACS || cfg.VMType == vmTypeAKS {
+		// Cluster name is a mandatory param to proceed.
 		if cfg.ClusterName == "" {
 			return fmt.Errorf("Cluster name not set for type %+v", cfg.VMType)
 		}
