@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/azure-sdk-for-go/arm/resources/resources"
 	"github.com/Azure/azure-sdk-for-go/arm/storage"
+	"github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2017-09-30/containerservice"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
@@ -81,7 +82,7 @@ type AccountsClient interface {
 // ContainerServicesClient defines the needed functions from azure compute.ContainerServicesClient
 type ContainerServicesClient interface {
 	Get(resourceGroupName string, containerServiceName string) (result compute.ContainerService, err error)
-        CreateOrUpdate(resourceGroupName string, containerServiceName string, parameters compute.ContainerService, cancel <-chan struct{}) (<-chan compute.ContainerService, <-chan error)
+	CreateOrUpdate(resourceGroupName string, containerServiceName string, parameters compute.ContainerService, cancel <-chan struct{}) (<-chan compute.ContainerService, <-chan error)
 }
 
 type azClient struct {
@@ -93,6 +94,7 @@ type azClient struct {
 	disksClient                     DisksClient
 	storageAccountsClient           AccountsClient
 	containerServicesClient         ContainerServicesClient
+	managedContainerServicesClient  containerservice.ManagedClustersClient
 }
 
 // newServicePrincipalTokenFromCredentials creates a new ServicePrincipalToken using values of the
@@ -196,10 +198,15 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 	disksClient.PollingDelay = 5 * time.Second
 	glog.V(5).Infof("Created disks client with authorizer: %v", disksClient)
 
-	containerServicesClient :=  compute.NewContainerServicesClient(cfg.SubscriptionID)
-        containerServicesClient.Authorizer = autorest.NewBearerAuthorizer(spt)
-        containerServicesClient.Sender = autorest.CreateSender()
+	containerServicesClient := compute.NewContainerServicesClient(cfg.SubscriptionID)
+	containerServicesClient.Authorizer = autorest.NewBearerAuthorizer(spt)
+	containerServicesClient.Sender = autorest.CreateSender()
 	glog.V(5).Infof("Created Container services client with authorizer: %v", containerServicesClient)
+
+	managedContainerServicesClient := containerservice.NewManagedClustersClient(cfg.SubscriptionID)
+	managedContainerServicesClient.Authorizer = autorest.NewBearerAuthorizer(spt)
+	managedContainerServicesClient.Sender = autorest.CreateSender()
+	glog.V(5).Infof("Created Managed Container services client with authorizer: %v", managedContainerServicesClient)
 
 	return &azClient{
 		disksClient:                     disksClient,
@@ -209,7 +216,7 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 		deploymentsClient:               deploymentsClient,
 		virtualMachinesClient:           virtualMachinesClient,
 		storageAccountsClient:           storageAccountsClient,
-		containerServicesClient:	 containerServicesClient,
-
+		containerServicesClient:         containerServicesClient,
+		managedContainerServicesClient:  managedContainerServicesClient,
 	}, nil
 }

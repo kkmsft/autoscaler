@@ -18,13 +18,13 @@ package azure
 
 import (
 	"fmt"
+	"github.com/golang/glog"
+	"strings"
 	"sync"
 	"time"
-	"strings"
-	"github.com/golang/glog"
 
-	apiv1 "k8s.io/api/core/v1"
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
+	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
 	"k8s.io/kubernetes/pkg/scheduler/schedulercache"
@@ -35,9 +35,9 @@ type ContainerServiceAgentPool struct {
 	azureRef
 	manager *AzureManager
 
-	minSize int
-	maxSize int
-	serviceType string
+	minSize           int
+	maxSize           int
+	serviceType       string
 	nodeResourceGroup string
 
 	template   map[string]interface{}
@@ -48,7 +48,7 @@ type ContainerServiceAgentPool struct {
 	curSize     int64
 }
 
-func NewContainerServiceAgentPool(spec *dynamic.NodeGroupSpec, am *AzureManager) (*ContainerServiceAgentPool, error){
+func NewContainerServiceAgentPool(spec *dynamic.NodeGroupSpec, am *AzureManager) (*ContainerServiceAgentPool, error) {
 	asg := &ContainerServiceAgentPool{
 		azureRef: azureRef{
 			Name: spec.Name,
@@ -62,16 +62,16 @@ func NewContainerServiceAgentPool(spec *dynamic.NodeGroupSpec, am *AzureManager)
 	return asg, nil
 }
 
-func (agentPool *ContainerServiceAgentPool) GetPool(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (ret *compute.ContainerServiceAgentPoolProfile){
-	for _, value  := range *agentProfiles {
-		if  *(value.Name) == (agentPool.azureRef.Name) {
+func (agentPool *ContainerServiceAgentPool) GetPool(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (ret *compute.ContainerServiceAgentPoolProfile) {
+	for _, value := range *agentProfiles {
+		if *(value.Name) == (agentPool.azureRef.Name) {
 			return &value
 		}
 	}
 	return nil
 }
 
-func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (count int, err error){
+func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (count int, err error) {
 	pool := agentPool.GetPool(agentProfiles)
 	if pool != nil {
 		return (int)(*pool.Count), nil
@@ -80,7 +80,7 @@ func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]comput
 	}
 }
 
-func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile, count int) (err error){
+func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile, count int) (err error) {
 	pool := agentPool.GetPool(agentProfiles)
 	if pool != nil {
 		*(pool.Count) = int32(count)
@@ -90,7 +90,7 @@ func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]comput
 	}
 }
 
-func (agentPool *ContainerServiceAgentPool) GetNodeResourceGroup(vmType string) string  {
+func (agentPool *ContainerServiceAgentPool) GetNodeResourceGroup(vmType string) string {
 	resourceGroup := agentPool.manager.config.ResourceGroup
 	clusterName := agentPool.manager.config.ClusterName
 	location := agentPool.manager.config.Location
@@ -133,8 +133,15 @@ func (agentPool *ContainerServiceAgentPool) MinSize() int {
 
 // Undelying size of nodes
 func (agentPool *ContainerServiceAgentPool) TargetSize() (int, error) {
-	gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
-	                                                                                   agentPool.manager.config.ClusterName)
+	var err error
+	if agentPool.serviceType == vmTypeACS {
+		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+	} else { // AKS
+		gotContainerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+
+	}
 	if err != nil {
 		glog.Error(err)
 		return -1, err
@@ -149,8 +156,13 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 		return fmt.Errorf("Target size %d requested outside Max: %d, Min: %d", targetSize, agentPool.MaxSize(), agentPool.MinSize())
 	}
 
-	gotContainerService, err :=agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
-						             agentPool.manager.config.ClusterName)
+	if agentPool.servicetype == vmTypeAKS {
+		gotContainerService, err := agentPool.manager.azClient.managedcontainerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+	} else {
+		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+	}
 	if err != nil {
 		glog.Error(err)
 		return err
@@ -174,7 +186,11 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 	gotContainerService.ServicePrincipalProfile = &sp
 
 	//Update the service with the new value.
-	updatedVal, chanErr := agentPool.manager.azClient.containerServicesClient.CreateOrUpdate(agentPool.manager.config.ResourceGroup, *gotContainerService.Name, gotContainerService, cancel)
+	if agentPool.ServiceType == vmTypeAKS {
+		updatedVal, chanErr := agentPool.manager.azClient.managedContainerServicesClient.CreateOrUpdate(agentPool.manager.config.ResourceGroup, *gotContainerService.Name, gotContainerService, cancel)
+	} else {
+		updatedVal, chanErr := agentPool.manager.azClient.managedContainerServicesClient.CreateOrUpdate(agentPool.manager.config.ResourceGroup, *gotContainerService.Name, gotContainerService, cancel)
+	}
 	start := time.Now()
 
 	error := <-chanErr
@@ -221,25 +237,25 @@ func (agentPool *ContainerServiceAgentPool) DeleteNodesInternal(providerIDs []st
 			return err
 		}
 		glog.Infof("VM name got to delete: %s", nodeName)
-		status, errChan :=agentPool.manager.azClient.virtualMachinesClient.Delete(agentPool.nodeResourceGroup, nodeName, *cancel)
+		status, errChan := agentPool.manager.azClient.virtualMachinesClient.Delete(agentPool.nodeResourceGroup, nodeName, *cancel)
 		if <-errChan != nil {
 			return <-errChan
 		}
 		// TODO: Look more deeper into the operational status.
 		glog.Infof("Status from delete: %+v", <-status)
 		/*vhd := vm.StorageProfile.OsDisk.Vhd
-        managedDisk := vm.StorageProfile.OsDisk.ManagedDisk		
-		if vhd != nil {
-			glog.Infof("vhd: %+v", vhd)
-			accountName, vhdContainer, vhdBlob, err := armhelpers.SplitBlobURI(*vhd.URI)
-		} else {
-			glog.Infof("mgmtdisk: %+v", managedDisk)
-		}*/
+		        managedDisk := vm.StorageProfile.OsDisk.ManagedDisk
+				if vhd != nil {
+					glog.Infof("vhd: %+v", vhd)
+					accountName, vhdContainer, vhdBlob, err := armhelpers.SplitBlobURI(*vhd.URI)
+				} else {
+					glog.Infof("mgmtdisk: %+v", managedDisk)
+				}*/
 		targetSize--
 	}
 
 	// TODO: handle the errors from delete operation.
-	if (currentSize != targetSize) {
+	if currentSize != targetSize {
 		agentPool.SetSize(targetSize)
 	}
 	return nil
@@ -259,7 +275,7 @@ func (agentPool *ContainerServiceAgentPool) DeleteNodes(nodes []*apiv1.Node) err
 }
 
 func (agentPool *ContainerServiceAgentPool) GetNodes() ([]string, error) {
-	vmList, err :=agentPool.manager.azClient.virtualMachinesClient.List(agentPool.nodeResourceGroup)
+	vmList, err := agentPool.manager.azClient.virtualMachinesClient.List(agentPool.nodeResourceGroup)
 	if err != nil {
 		glog.Error("Error", err)
 		return nil, err
