@@ -1,4 +1,5 @@
-# Copyright 2016 The Kubernetes Authors. All rights reserved
+#!/usr/bin/env bash
+# Copyright 2018 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -o errexit
+set -o nounset
+set -o pipefail
 
-FROM k8s.gcr.io/debian-base-amd64:0.3
-MAINTAINER Marcin Wielgus "mwielgus@google.com"
+# Install tools we need
+go install ../../github.com/client9/misspell/cmd/misspell
 
-ADD updater updater
-
-CMD ./updater --v=4 --stderrthreshold=info
+# Spell checking
+git ls-files | grep -v -e vendor | xargs misspell -error -o stderr

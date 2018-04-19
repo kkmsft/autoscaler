@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,5 @@ limitations under the License.
 
 package common
 
-const (
-	// OOMBumpUpRatio specifies how much memory will be added after observing OOM.
-	OOMBumpUpRatio float64 = 1.2
-	// OOMMinBumpUp specifies minimal increase of memeory after observing OOM.
-	OOMMinBumpUp float64 = 100 * 1024 * 1024 // 100MB
-)
+// VerticalPodAutoscalerVersion is the version of VPA.
+const VerticalPodAutoscalerVersion = "0.1.0"

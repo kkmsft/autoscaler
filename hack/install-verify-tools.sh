@@ -28,4 +28,6 @@ fi
 
 go get -u github.com/tools/godep
 
+go get -u github.com/client9/misspell/cmd/misspell
+
 # ex: ts=2 sw=2 et filetype=sh

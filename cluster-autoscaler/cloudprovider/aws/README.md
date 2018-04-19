@@ -26,7 +26,7 @@ A minimum IAM policy would look like:
 }
 ```
 
-If you'd like to auto-discover node groups by specifing the `--node-group-auto-discover` flag, a `DescribeTags` permission is also required:
+If you'd like to auto-discover node groups by specifying the `--node-group-auto-discover` flag, a `DescribeTags` permission is also required:
 
 ```json
 {
@@ -71,7 +71,7 @@ kubectl apply -f examples/cluster-autoscaler-run-on-master.yaml
 
 ### Auto-Discovery Setup
 
-To run a cluster-autoscaler which auto-discovers ASGs with nodes use the `--node-group-auto-discovery` flag and tag the ASGs with _key_ `k8s.io/cluster-autoscaler/enabled` and _key_ `kubernetes.io/cluster/<YOUR CLUSTER NAME>`.
+To run a cluster-autoscaler which auto-discovers ASGs with nodes use the `--node-group-auto-discovery` flag and tag the ASGs with _key_ `k8s.io/cluster-autoscaler/enabled` with value `yes` and _key_ `kubernetes.io/cluster/<YOUR CLUSTER NAME>`with value `true`.
 Note that:
 
 * `kubernetes.io/cluster/<YOUR CLUSTER NAME>` is required when `k8s.io/cluster-autoscaler/enabled` is used across many clusters to prevent ASGs from different clusters recognized as the node groups
