@@ -29,6 +29,7 @@ this document:
   * [How can I scale my cluster to just 1 node?](#how-can-i-scale-my-cluster-to-just-1-node)
   * [How can I scale a node group to 0?](#how-can-i-scale-a-node-group-to-0)
   * [How can I prevent Cluster Autoscaler from scaling down a particular node?](#how-can-i-prevent-cluster-autoscaler-from-scaling-down-a-particular-node)
+  * [How can I configure overprovisioning with Cluster Autoscaler?](#how-can-i-configure-overprovisioning-with-cluster-autoscaler)
 * [Internals](#internals)
   * [Are all of the mentioned heuristics and timings final?](#are-all-of-the-mentioned-heuristics-and-timings-final)
   * [How does scale-up work?](#how-does-scale-up-work)
@@ -304,6 +305,114 @@ It can be added to (or removed from) a node using kubectl:
 kubectl annotate node <nodename> cluster-autoscaler.kubernetes.io/scale-down-disabled=true
 ```
 
+### How can I configure overprovisioning with Cluster Autoscaler?
+
+Below solution works since version 1.1 (to be shipped with Kubernetes 1.9).
+
+Overprovisioning can be configured using deployment running pause pods with very low assigned
+priority (see [Priority Preemption](https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)) 
+which keeps resources that can be used by other pods. If there is not enough resources then pause
+pods are premmpted and new pods take their place. Next pause pods become unschedulable and force CA
+ to scale up the cluster.
+
+The size of overprovisioned resources can be controlled by changing the size of pause pods and the
+number of replicas. This way you can configure static size of overprovisioning resources (i.e. 2
+additional cores). If we want to configure dynamic size (i.e. 20% of recources in the cluster)
+then we need to use [Horizontal Cluster Proportional Autoscaler](https://github.com/kubernetes-incubator/cluster-proportional-autoscaler)
+which will change number of pause pods depending on the size of the cluster. It will increase the
+number of replicas when cluster grows and decrease the number of replicas if cluster shrinks.
+
+Configuration of dynamic overprovisioning:
+
+1. Enable priority preemption in your cluster. It can be done by exporting following env
+variables before executing kube-up (more details [here](https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/)):
+```sh
+export KUBE_RUNTIME_CONFIG=scheduling.k8s.io/v1alpha1=true
+export ENABLE_POD_PRIORITY=true
+```
+
+2. Define priority class for overprovisioning pods. Priority -1 will be reserved for 
+overprovisioning pods as it is the lowest priority that triggers scaling clusters. Other pods need 
+to use priority 0 or higher in order to be able to preempt overprovisioning pods. You can use 
+following definitions:
+
+```yaml
+apiVersion: scheduling.k8s.io/v1alpha1
+kind: PriorityClass
+metadata:
+  name: overprovisioning
+value: -1
+globalDefault: false
+description: "Priority class used by overprovisioning."
+```
+
+3. Change pod priority cutoff in CA to -10 so pause pods are taken into account during scale down
+and scale up. Set flag ```expendable-pods-priority-cutoff``` to -10. If you already use priority
+preemption then pods with priorities between -10 and -1 won't be best effort anymore.
+
+4. Create service account that will be used by Horizontal Cluster Proportional Autoscaler which needs
+specific roles. More details [here](https://github.com/kubernetes-incubator/cluster-proportional-autoscaler/tree/master/examples#rbac-configurations)
+
+5. Create deployments that will reserve resources. "overprovisioning" deployment will reserve
+resources and "overprovisioning-autoscaler" deployment will change the size of reserved resources.
+You can use following definitions (you need to change service account for "overprovisioning-autoscaler" 
+deployment to the one created in the previous step):
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overprovisioning
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: overprovisioning
+  template:
+    metadata:
+      labels:
+        run: overprovisioning
+    spec:
+      priorityClassName: overprovisioning
+      containers:
+      - name: reserve-resources
+        image: k8s.gcr.io/pause
+        resources:
+          requests:
+            cpu: "200m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overprovisioning-autoscaler
+  namespace: default
+  labels:
+    app: overprovisioning-autoscaler
+spec:
+  selector:
+    matchLabels:
+      app: overprovisioning-autoscaler
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: overprovisioning-autoscaler
+    spec:
+      containers:
+        - image: k8s.gcr.io/cluster-proportional-autoscaler-amd64:1.1.2
+          name: autoscaler
+          command:
+            - /cluster-proportional-autoscaler
+            - --namespace=default
+            - --configmap=overprovisioning-autoscaler
+            - --default-params={"linear":{"coresPerReplica":1}}
+            - --target=deployment/overprovisioning
+            - --logtostderr=true
+            - --v=2
+      serviceAccountName: cluster-proportional-autoscaler-service-account
+```
+
 ****************
 
 # Internals
@@ -318,7 +427,7 @@ Scale-up creates a watch on the API server looking for all pods. It checks for a
 pods every 10 seconds (configurable by `--scan-interval` flag). A pod is unschedulable when the Kubernetes scheduler is unable
 to find a node that can accommodate the pod. For example, a pod can request more CPU that is
 available on any of the cluster nodes. Unschedulable pods are recognized by their PodCondition.
-Whenever a kubernetes scheduler fails to find a place to run a pod, it sets "schedulable"
+Whenever a Kubernetes scheduler fails to find a place to run a pod, it sets "schedulable"
 PodCondition to false and reason to "unschedulable".  If there are any items in the unschedulable
 pods list, Cluster Autoscaler tries to find a new place to run them.
 

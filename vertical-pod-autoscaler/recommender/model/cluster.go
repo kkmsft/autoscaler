@@ -124,13 +124,16 @@ func (cluster *ClusterState) DeletePod(podID PodID) error {
 // adds it to the parent pod in the ClusterState object, if not yet present.
 // Requires the pod to be added to the ClusterState first. Otherwise an error is
 // returned.
-func (cluster *ClusterState) AddOrUpdateContainer(containerID ContainerID) error {
+func (cluster *ClusterState) AddOrUpdateContainer(containerID ContainerID, request Resources) error {
 	pod, podExists := cluster.Pods[containerID.PodID]
 	if !podExists {
 		return NewKeyError(containerID.PodID)
 	}
-	if _, containerExists := pod.Containers[containerID.ContainerName]; !containerExists {
-		pod.Containers[containerID.ContainerName] = NewContainerState()
+	if container, containerExists := pod.Containers[containerID.ContainerName]; !containerExists {
+		pod.Containers[containerID.ContainerName] = NewContainerState(request)
+	} else {
+		// Request has changed.
+		container.Request = request
 	}
 	return nil
 }
@@ -151,7 +154,7 @@ func (cluster *ClusterState) AddSample(sample *ContainerUsageSampleWithKey) erro
 	return nil
 }
 
-// RecordOOM adds info regarding OOM event in the model as an artifical memory sample.
+// RecordOOM adds info regarding OOM event in the model as an artificial memory sample.
 func (cluster *ClusterState) RecordOOM(containerID ContainerID, timestamp time.Time, requestedMemory ResourceAmount) error {
 	pod, podExists := cluster.Pods[containerID.PodID]
 	if !podExists {

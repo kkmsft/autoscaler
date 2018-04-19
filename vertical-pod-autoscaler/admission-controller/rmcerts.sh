@@ -1,4 +1,6 @@
-# Copyright 2016 The Kubernetes Authors. All rights reserved
+#!/bin/bash
+
+# Copyright 2018 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Generates the a CA cert, a server key, and a server cert signed by the CA.
+# reference:
+# https://github.com/kubernetes/kubernetes/blob/master/plugin/pkg/admission/webhook/gencerts.sh
+set -e
 
-FROM k8s.gcr.io/debian-base-amd64:0.3
-MAINTAINER Marcin Wielgus "mwielgus@google.com"
-
-ADD updater updater
-
-CMD ./updater --v=4 --stderrthreshold=info
+echo "Deleting VPA Admission Controller certs."
+kubectl delete secret --namespace=kube-system vpa-tls-certs

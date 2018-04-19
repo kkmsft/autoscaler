@@ -21,8 +21,14 @@ import (
 	"math"
 	"time"
 
-	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/common"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/recommender/util"
+)
+
+const (
+	// OOMBumpUpRatio specifies how much memory will be added after observing OOM.
+	OOMBumpUpRatio float64 = 1.2
+	// OOMMinBumpUp specifies minimal increase of memeory after observing OOM.
+	OOMMinBumpUp float64 = 100 * 1024 * 1024 // 100MB
 )
 
 // ContainerUsageSample is a measure of resource usage of a container over some
@@ -48,6 +54,8 @@ type ContainerUsageSample struct {
 //   it will store 7 peaks, one per day, for the last week.
 //   Note: samples are added to intervals based on their start timestamps.
 type ContainerState struct {
+	// Current request.
+	Request Resources
 	// Distribution of CPU usage. The measurement unit is 1 CPU core.
 	CPUUsage util.Histogram
 	// Start of the latest CPU usage sample that was aggregated.
@@ -67,8 +75,9 @@ type ContainerState struct {
 }
 
 // NewContainerState returns a new, empty ContainerState.
-func NewContainerState() *ContainerState {
+func NewContainerState(request Resources) *ContainerState {
 	return &ContainerState{
+		Request:             request,
 		CPUUsage:            util.NewDecayingHistogram(CPUHistogramOptions, CPUHistogramDecayHalfLife),
 		LastCPUSampleStart:  time.Time{},
 		FirstCPUSampleStart: time.Time{},
@@ -89,7 +98,14 @@ func (container *ContainerState) addCPUSample(sample *ContainerUsageSample) bool
 	if !sample.isValid(ResourceCPU) || !sample.MeasureStart.After(container.LastCPUSampleStart) {
 		return false // Discard invalid, duplicate or out-of-order samples.
 	}
-	container.CPUUsage.AddSample(CoresFromCPUAmount(sample.Usage), 1.0, sample.MeasureStart)
+	cpuUsageCores := CoresFromCPUAmount(sample.Usage)
+	cpuRequestCores := CoresFromCPUAmount(container.Request[ResourceCPU])
+	// Samples are added with the weight equal to the current request. This means that
+	// whenever the request is increased, the history accumulated so far effectively decays,
+	// which helps react quickly to CPU starvation.
+	minSampleWeight := 0.1
+	container.CPUUsage.AddSample(
+		cpuUsageCores, math.Max(cpuRequestCores, minSampleWeight), sample.MeasureStart)
 	container.LastCPUSampleStart = sample.MeasureStart
 	if container.FirstCPUSampleStart.IsZero() {
 		container.FirstCPUSampleStart = sample.MeasureStart
@@ -128,7 +144,7 @@ func (container *ContainerState) addMemorySample(sample *ContainerUsageSample) b
 	return true
 }
 
-// RecordOOM adds info regarding OOM event in the model as an artifical memory sample.
+// RecordOOM adds info regarding OOM event in the model as an artificial memory sample.
 func (container *ContainerState) RecordOOM(timestamp time.Time, requestedMemory ResourceAmount) error {
 	resourceAmount := float64(requestedMemory)
 	// Discard old OOM
@@ -141,8 +157,7 @@ func (container *ContainerState) RecordOOM(timestamp time.Time, requestedMemory 
 		resourceAmount = math.Max(resourceAmount, *container.MemoryUsagePeaks.Head())
 	}
 
-	resourceAmount = math.Max(resourceAmount+common.OOMMinBumpUp,
-		resourceAmount*common.OOMBumpUpRatio)
+	resourceAmount = math.Max(resourceAmount+OOMMinBumpUp, resourceAmount*OOMBumpUpRatio)
 
 	oomMemorySample := ContainerUsageSample{
 		MeasureStart: timestamp,
