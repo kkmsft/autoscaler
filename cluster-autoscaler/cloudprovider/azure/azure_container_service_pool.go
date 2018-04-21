@@ -24,7 +24,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/Azure/azure-sdk-for-go/arm/compute"
+	"github.com/Azure/azure-sdk-for-go/services/containerservice/mgmt/2017-09-30/containerservice"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/autoscaler/cluster-autoscaler/cloudprovider"
 	"k8s.io/autoscaler/cluster-autoscaler/config/dynamic"
@@ -63,7 +63,7 @@ func NewContainerServiceAgentPool(spec *dynamic.NodeGroupSpec, am *AzureManager)
 	return asg, nil
 }
 
-func (agentPool *ContainerServiceAgentPool) GetPool(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (ret *compute.ContainerServiceAgentPoolProfile) {
+func (agentPool *ContainerServiceAgentPool) GetPool(agentProfiles *[]containerservice.AgentPoolProfile) (ret *containerservice.AgentPoolProfile) {
 	for _, value := range *agentProfiles {
 		if *(value.Name) == (agentPool.azureRef.Name) {
 			return &value
@@ -72,7 +72,7 @@ func (agentPool *ContainerServiceAgentPool) GetPool(agentProfiles *[]compute.Con
 	return nil
 }
 
-func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile) (count int, err error) {
+func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]containerservice.AgentPoolProfile) (count int, err error) {
 	pool := agentPool.GetPool(agentProfiles)
 	if pool != nil {
 		return (int)(*pool.Count), nil
@@ -81,7 +81,7 @@ func (agentPool *ContainerServiceAgentPool) GetNodeCount(agentProfiles *[]comput
 	}
 }
 
-func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]compute.ContainerServiceAgentPoolProfile, count int) (err error) {
+func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]containerservice.AgentPoolProfile, count int) (err error) {
 	pool := agentPool.GetPool(agentProfiles)
 	if pool != nil {
 		*(pool.Count) = int32(count)
@@ -110,11 +110,13 @@ func (agentPool *ContainerServiceAgentPool) GetProviderID(name string) string {
 }
 
 func (agentPool *ContainerServiceAgentPool) GetNameFromProviderID(providerID string) (string, error) {
-	vms, err := agentPool.manager.azClient.virtualMachinesClient.List(agentPool.nodeResourceGroup)
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	vms, err := agentPool.manager.azClient.virtualMachinesClient.List(ctx, agentPool.nodeResourceGroup)
 	if err != nil {
 		return "", err
 	}
-	for _, vm := range *vms.Value {
+	for _, vm := range vms {
 		if strings.Compare(*vm.ID, providerID) == 0 {
 			return *vm.Name, nil
 		}
@@ -134,41 +136,62 @@ func (agentPool *ContainerServiceAgentPool) MinSize() int {
 
 // Undelying size of nodes
 func (agentPool *ContainerServiceAgentPool) TargetSize() (int, error) {
-	var err error
-	if agentPool.serviceType == vmTypeACS {
-		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
-			agentPool.manager.config.ClusterName)
-	} else { // AKS
-		gotContainerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(agentPool.manager.config.ResourceGroup,
-			agentPool.manager.config.ClusterName)
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
 
+	if agentPool.serviceType == vmTypeACS {
+		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(ctx,
+			agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+		if err != nil {
+			glog.Error(err)
+			return -1, err
+		}
+		return agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
+	} else { // AKS
+		gotContainerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
+			agentPool.manager.config.ClusterName)
+		if err != nil {
+			glog.Error(err)
+			return -1, err
+		}
+		return agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
 	}
-	if err != nil {
-		glog.Error(err)
-		return -1, err
-	}
-	return agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
 }
 
 func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
+	var err error
+	var poolProfiles *[]containerservice.AgentPoolProfile
+	var containerService *containerservice.ContainerService
+	var managedCluster *containerservice.ManagedCluster
 	glog.Infof("Set size request: %d", targetSize)
 	if targetSize > agentPool.MaxSize() || targetSize < agentPool.MinSize() {
 		glog.Errorf("Target size %d requested outside Max: %d, Min: %d", targetSize, agentPool.MaxSize(), agentPool.MaxSize)
 		return fmt.Errorf("Target size %d requested outside Max: %d, Min: %d", targetSize, agentPool.MaxSize(), agentPool.MinSize())
 	}
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
 
-	if agentPool.servicetype == vmTypeAKS {
-		gotContainerService, err := agentPool.manager.azClient.managedcontainerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+	if agentPool.serviceType == vmTypeAKS {
+		containerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
 			agentPool.manager.config.ClusterName)
+		if err != nil {
+			return err
+		}
+		poolProfiles = containerService.AgentPoolProfiles
 	} else {
-		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(agentPool.manager.config.ResourceGroup,
+		managedCluster, err := agentPool.manager.azClient.containerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
 			agentPool.manager.config.ClusterName)
+		if err != nil {
+			return err
+		}
+		poolProfiles = managedCluster.AgentPoolProfiles
 	}
 	if err != nil {
 		glog.Error(err)
 		return err
 	}
-	currentSize, err := agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
+	currentSize, err := agentPool.GetNodeCount(poolProfiles)
 	if err != nil {
 		glog.Error(err)
 		return err
@@ -177,31 +200,52 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 	glog.Infof("Current size: %d, Target size requested: %d", currentSize, targetSize)
 
 	// Set the value in the volatile structure.
-	agentPool.SetNodeCount(gotContainerService.AgentPoolProfiles, targetSize)
+	agentPool.SetNodeCount(poolProfiles, targetSize)
 
-	cancel := make(chan struct{})
-
-	var sp compute.ContainerServiceServicePrincipalProfile
+	var sp containerservice.ServicePrincipalProfile
 	sp.ClientID = &(agentPool.manager.config.AADClientID)
 	sp.Secret = &(agentPool.manager.config.AADClientSecret)
-	gotContainerService.ServicePrincipalProfile = &sp
+
+	start := time.Now()
+	updateCtx, updateCancel := getContextWithCancel()
+	defer updateCancel()
 
 	//Update the service with the new value.
-	if agentPool.ServiceType == vmTypeAKS {
-		updatedVal, chanErr := agentPool.manager.azClient.managedContainerServicesClient.CreateOrUpdate(agentPool.manager.config.ResourceGroup, *gotContainerService.Name, gotContainerService, cancel)
+	if agentPool.serviceType == vmTypeAKS {
+		aksClient := agentPool.manager.azClient.managedContainerServicesClient
+		managedCluster.ServicePrincipalProfile = &sp
+		updatedVal, err := aksClient.CreateOrUpdate(updateCtx, agentPool.manager.config.ResourceGroup,
+			*managedCluster.Name, *managedCluster)
+		if err != nil {
+			return err
+		}
+		err = updatedVal.WaitForCompletion(updateCtx, aksClient.Client)
+		if err != nil {
+			return err
+		}
+		newVal, err := updatedVal.Result(aksClient)
+		if err != nil {
+			return err
+		}
+		glog.Infof("Target size set done !!. Val: %+v", newVal)
 	} else {
-		updatedVal, chanErr := agentPool.manager.azClient.managedContainerServicesClient.CreateOrUpdate(agentPool.manager.config.ResourceGroup, *gotContainerService.Name, gotContainerService, cancel)
+		acsClient := agentPool.manager.azClient.containerServicesClient
+		containerService.ServicePrincipalProfile = &sp
+		updatedVal, err := acsClient.CreateOrUpdate(updateCtx, agentPool.manager.config.ResourceGroup,
+			*containerService.Name, *containerService)
+		err = updatedVal.WaitForCompletion(updateCtx, acsClient.Client)
+		if err != nil {
+			return err
+		}
+		newVal, err := updatedVal.Result(acsClient)
+		if err != nil {
+			return err
+		}
+		glog.Infof("Target size set done !!. Val: %+v", newVal)
 	}
-	start := time.Now()
 
-	error := <-chanErr
-	if error != nil {
-		return error
-	}
-	new_val := <-updatedVal
 	end := time.Now()
 	glog.Infof("Got Updated value. Time taken: ", end.Sub(start))
-	glog.Infof("Target size set done !!. Val: %+v", new_val)
 	return nil
 }
 
@@ -221,7 +265,6 @@ func (agentPool *ContainerServiceAgentPool) IncreaseSize(delta int) error {
 }
 
 func (agentPool *ContainerServiceAgentPool) DeleteNodesInternal(providerIDs []string) error {
-	cancel := new(<-chan struct{})
 	currentSize, err := agentPool.TargetSize()
 	if err != nil {
 		return err
@@ -238,12 +281,15 @@ func (agentPool *ContainerServiceAgentPool) DeleteNodesInternal(providerIDs []st
 			return err
 		}
 		glog.Infof("VM name got to delete: %s", nodeName)
-		status, errChan := agentPool.manager.azClient.virtualMachinesClient.Delete(agentPool.nodeResourceGroup, nodeName, *cancel)
-		if <-errChan != nil {
-			return <-errChan
+		ctx, cancel := getContextWithCancel()
+		defer cancel()
+
+		status, err := agentPool.manager.azClient.virtualMachinesClient.Delete(ctx, agentPool.nodeResourceGroup, nodeName)
+		if err != nil {
+			return err
 		}
 		// TODO: Look more deeper into the operational status.
-		glog.Infof("Status from delete: %+v", <-status)
+		glog.Infof("Status from delete: %+v", status)
 		/*vhd := vm.StorageProfile.OsDisk.Vhd
 		        managedDisk := vm.StorageProfile.OsDisk.ManagedDisk
 				if vhd != nil {
@@ -276,14 +322,16 @@ func (agentPool *ContainerServiceAgentPool) DeleteNodes(nodes []*apiv1.Node) err
 }
 
 func (agentPool *ContainerServiceAgentPool) GetNodes() ([]string, error) {
-	vmList, err := agentPool.manager.azClient.virtualMachinesClient.List(agentPool.nodeResourceGroup)
+	ctx, cancel := getContextWithCancel()
+	defer cancel()
+	vmList, err := agentPool.manager.azClient.virtualMachinesClient.List(ctx, agentPool.nodeResourceGroup)
 	if err != nil {
 		glog.Error("Error", err)
 		return nil, err
 	}
-	nodeArray := make([]string, len(*vmList.Value))
+	nodeArray := make([]string, len(vmList))
 	// TODO: figure out if we need to filter for only worker nodes.
-	for i, node := range *vmList.Value {
+	for i, node := range vmList {
 		providerID := agentPool.GetProviderID(*node.ID)
 		nodeArray[i] = providerID
 	}

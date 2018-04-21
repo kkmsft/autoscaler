@@ -284,7 +284,7 @@ type azClient struct {
 	interfacesClient                InterfacesClient
 	disksClient                     DisksClient
 	storageAccountsClient           AccountsClient
-	containerServicesClient         ContainerServicesClient
+	containerServicesClient         containerservice.ContainerServicesClient
 	managedContainerServicesClient  containerservice.ManagedClustersClient
 }
 
@@ -377,7 +377,7 @@ func newAzClient(cfg *Config, env *azure.Environment) (*azClient, error) {
 	disksClient.PollingDelay = 5 * time.Second
 	glog.V(5).Infof("Created disks client with authorizer: %v", disksClient)
 
-	containerServicesClient := compute.NewContainerServicesClient(cfg.SubscriptionID)
+	containerServicesClient := containerservice.NewContainerServicesClient(cfg.SubscriptionID)
 	containerServicesClient.Authorizer = autorest.NewBearerAuthorizer(spt)
 	containerServicesClient.Sender = autorest.CreateSender()
 	glog.V(5).Infof("Created Container services client with authorizer: %v", containerServicesClient)
