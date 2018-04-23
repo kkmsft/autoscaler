@@ -6,10 +6,12 @@ The cluster autoscaler on Azure scales worker nodes within any specified autosca
 
 Kubernetes v1.10.X and Cluster autoscaler v1.2+  are required to run on Azure.
 
-Cluster autoscaler support two VM types with Azure cloud provider:
+Cluster autoscaler support four VM types with Azure cloud provider:
 
 - **vmss**: For kubernetes cluster running on VMSS instances. Azure cloud provider's `vmType` parameter must be configured as 'vmss'. It requires Kubernetes with Azure VMSS support ([kubernetes#43287](https://github.com/kubernetes/kubernetes/issues/43287)).
 - **standard**: For kubernetes cluster running on VMAS instances. Azure cloud provider's `vmType` parameter must be configured as 'standard' or left as empty string. It only supports Kubernetes cluster deployed via [acs-engine](https://github.com/Azure/acs-engine).
+- **aks**": Managed container service (latest)
+- **acs**": Container service
 
 ## Permissions
 
@@ -128,14 +130,16 @@ Pre-requirements:
 
 - Get credentials from above `permissions` step.
 - Get the cluster name using the following:
-  For ACS:
-  ```sh
-  az acs list
-  ```
-  For AKS:
+
+  for AKS:
   ```sh
   az aks list
   ```
+  for ACS:
+  ```sh
+  az acs list
+  ```
+
 - Get a node pool name by extracting the value of the label **agentpool**
   ```sh
   kubectl get nodes --show-labels
@@ -153,8 +157,8 @@ Fill the values of cluster-autoscaler-azure secret in [cluster-autoscaler-contai
 - SubscriptionID: `<base64-encode-subscription-id>`
 - TenantID: `<base64-encoded-tenant-id>`
 - Deployment: `<base64-encoded-azure-initial-deploy-name>`
-- ClusterName: <base64-encoded-clustername>
-- NodeResourceGroup: <base64-encoded-node-resource-group>
+- ClusterName: `<base64-encoded-clustername>`
+- NodeResourceGroup: `<base64-encoded-node-resource-group>` 
 
 
 > Note that all data above should be encoded with base64.
