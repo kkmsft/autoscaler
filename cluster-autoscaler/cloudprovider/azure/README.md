@@ -121,3 +121,62 @@ To run a CA pod with Azure managed service identity (MSI), use [cluster-autoscal
 ```sh
 kubectl create -f cluster-autoscaler-standard-msi.yaml
 ```
+
+### AKS or ACS deployment
+
+Pre-requirements:
+
+- Get credentials from above `permissions` step.
+- Get the cluster name using the following:
+  For ACS:
+  ```sh
+  az acs list
+  ```
+  For AKS:
+  ```sh
+  az aks list
+  ```
+- Get a node pool name by extracting the value of the label **agentpool**
+  ```sh
+  kubectl get nodes --show-labels
+  ```
+- In case of AKS we need additional information in the form of node resource group.
+  Use the value of the label by name **kubernetes.azure.com/cluster** as the node resource group.
+
+- Encode each data with base64.
+
+Fill the values of cluster-autoscaler-azure secret in [cluster-autoscaler-containerservice](cluster-autoscaler-containerservice.yaml), including
+
+- ClientID: `<base64-encoded-client-id>`
+- ClientSecret: `<base64-encoded-client-secret>`
+- ResourceGroup: `<base64-encoded-resource-group>`
+- SubscriptionID: `<base64-encode-subscription-id>`
+- TenantID: `<base64-encoded-tenant-id>`
+- Deployment: `<base64-encoded-azure-initial-deploy-name>`
+- ClusterName: <base64-encoded-clustername>
+- NodeResourceGroup: <base64-encoded-node-resource-group>
+
+
+> Note that all data above should be encoded with base64.
+
+And fill the node groups in container command by `--nodes`, e.g.
+
+```yaml
+        - --nodes=1:10:nodepool1
+```
+The vmType param determines the kind of service we are interacting with.
+For AKS fill the following base64 encoded value:
+```sh
+$ echo AKS | base64
+QUtTCg==
+```
+and for ACS fill the following base64 encoded value:
+```sh
+$echo ACS | base64
+QUNTCg==
+```
+Then deploy cluster-autoscaler by running
+
+```sh
+kubectl create -f cluster-autoscaler-containerservice.yaml
+```
