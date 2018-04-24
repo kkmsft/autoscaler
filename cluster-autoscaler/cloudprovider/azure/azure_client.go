@@ -78,12 +78,6 @@ type AccountsClient interface {
 	ListKeys(resourceGroupName string, accountName string) (result storage.AccountListKeysResult, err error)
 }
 
-// ContainerServicesClient defines the needed functions from azure compute.ContainerServicesClient
-type ContainerServicesClient interface {
-	Get(resourceGroupName string, containerServiceName string) (result compute.ContainerService, err error)
-	CreateOrUpdate(resourceGroupName string, containerServiceName string, parameters compute.ContainerService, cancel <-chan struct{}) (<-chan compute.ContainerService, <-chan error)
-}
-
 // azVirtualMachineScaleSetsClient implements VirtualMachineScaleSetsClient.
 type azVirtualMachineScaleSetsClient struct {
 	client compute.VirtualMachineScaleSetsClient
