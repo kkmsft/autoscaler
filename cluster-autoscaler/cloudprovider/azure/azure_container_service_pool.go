@@ -39,6 +39,7 @@ type ContainerServiceAgentPool struct {
 	minSize           int
 	maxSize           int
 	serviceType       string
+	clusterName       string
 	nodeResourceGroup string
 
 	template   map[string]interface{}
@@ -59,7 +60,12 @@ func NewContainerServiceAgentPool(spec *dynamic.NodeGroupSpec, am *AzureManager)
 		manager: am,
 	}
 	asg.serviceType = am.config.VMType
-	asg.nodeResourceGroup = asg.GetNodeResourceGroup(asg.serviceType)
+	asg.clusterName = am.config.ClusterName
+	if am.config.VMType == vmTypeAKS {
+		asg.nodeResourceGroup = am.config.NodeResourceGroup
+	} else {
+		asg.nodeResourceGroup = am.config.ResourceGroup
+	}
 	return asg, nil
 }
 
@@ -89,18 +95,6 @@ func (agentPool *ContainerServiceAgentPool) SetNodeCount(agentProfiles *[]contai
 	} else {
 		return fmt.Errorf("Could not find pool with name: %s", agentPool.azureRef)
 	}
-}
-
-func (agentPool *ContainerServiceAgentPool) GetNodeResourceGroup(vmType string) string {
-	resourceGroup := agentPool.manager.config.ResourceGroup
-	clusterName := agentPool.manager.config.ClusterName
-	location := agentPool.manager.config.Location
-
-	// TODO: Assert for value not ACS/AKS
-	if vmType == vmTypeACS {
-		return resourceGroup + "_" + clusterName + "_" + location
-	}
-	return "MC_" + resourceGroup + "_" + clusterName + "_" + location
 }
 
 func (agentPool *ContainerServiceAgentPool) GetProviderID(name string) string {
@@ -139,23 +133,24 @@ func (agentPool *ContainerServiceAgentPool) TargetSize() (int, error) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
-	if agentPool.serviceType == vmTypeACS {
-		gotContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(ctx,
+	if agentPool.serviceType == vmTypeAKS {
+		aksContainerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(ctx,
 			agentPool.manager.config.ResourceGroup,
 			agentPool.manager.config.ClusterName)
 		if err != nil {
 			glog.Error(err)
 			return -1, err
 		}
-		return agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
-	} else { // AKS
-		gotContainerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
+		return agentPool.GetNodeCount(aksContainerService.AgentPoolProfiles)
+	} else { // ACS
+		acsContainerService, err := agentPool.manager.azClient.containerServicesClient.Get(ctx,
+			agentPool.manager.config.ResourceGroup,
 			agentPool.manager.config.ClusterName)
 		if err != nil {
 			glog.Error(err)
 			return -1, err
 		}
-		return agentPool.GetNodeCount(gotContainerService.AgentPoolProfiles)
+		return agentPool.GetNodeCount(acsContainerService.AgentPoolProfiles)
 	}
 }
 
@@ -164,6 +159,7 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 	var poolProfiles *[]containerservice.AgentPoolProfile
 	var containerService *containerservice.ContainerService
 	var managedCluster *containerservice.ManagedCluster
+
 	glog.Infof("Set size request: %d", targetSize)
 	if targetSize > agentPool.MaxSize() || targetSize < agentPool.MinSize() {
 		glog.Errorf("Target size %d requested outside Max: %d, Min: %d", targetSize, agentPool.MaxSize(), agentPool.MaxSize)
@@ -174,14 +170,14 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 
 	if agentPool.serviceType == vmTypeAKS {
 		containerService, err := agentPool.manager.azClient.managedContainerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
-			agentPool.manager.config.ClusterName)
+			agentPool.clusterName)
 		if err != nil {
 			return err
 		}
 		poolProfiles = containerService.AgentPoolProfiles
 	} else {
 		managedCluster, err := agentPool.manager.azClient.containerServicesClient.Get(ctx, agentPool.manager.config.ResourceGroup,
-			agentPool.manager.config.ClusterName)
+			agentPool.clusterName)
 		if err != nil {
 			return err
 		}
@@ -206,7 +202,9 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 	sp.ClientID = &(agentPool.manager.config.AADClientID)
 	sp.Secret = &(agentPool.manager.config.AADClientSecret)
 
+	var end time.Time
 	start := time.Now()
+
 	updateCtx, updateCancel := getContextWithCancel()
 	defer updateCancel()
 
@@ -227,7 +225,8 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 		if err != nil {
 			return err
 		}
-		glog.Infof("Target size set done !!. Val: %+v", newVal)
+		end = time.Now()
+		glog.Infof("Target size set done, AKS. Value: %+v\n", newVal)
 	} else {
 		acsClient := agentPool.manager.azClient.containerServicesClient
 		containerService.ServicePrincipalProfile = &sp
@@ -241,10 +240,10 @@ func (agentPool *ContainerServiceAgentPool) SetSize(targetSize int) error {
 		if err != nil {
 			return err
 		}
-		glog.Infof("Target size set done !!. Val: %+v", newVal)
+		end = time.Now()
+		glog.Infof("Target size set done, ACS. Val: %+v", newVal)
 	}
 
-	end := time.Now()
 	glog.Infof("Got Updated value. Time taken: ", end.Sub(start))
 	return nil
 }
@@ -290,14 +289,7 @@ func (agentPool *ContainerServiceAgentPool) DeleteNodesInternal(providerIDs []st
 		}
 		// TODO: Look more deeper into the operational status.
 		glog.Infof("Status from delete: %+v", status)
-		/*vhd := vm.StorageProfile.OsDisk.Vhd
-		        managedDisk := vm.StorageProfile.OsDisk.ManagedDisk
-				if vhd != nil {
-					glog.Infof("vhd: %+v", vhd)
-					accountName, vhdContainer, vhdBlob, err := armhelpers.SplitBlobURI(*vhd.URI)
-				} else {
-					glog.Infof("mgmtdisk: %+v", managedDisk)
-				}*/
+		// TODO: ACS requires more cleanup to delete the managed disk
 		targetSize--
 	}
 

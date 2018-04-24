@@ -76,7 +76,8 @@ type Config struct {
 
 	//Configs only for ACS/AKS
 	ClusterName string `json:"clusterName" yaml:"clusterName"`
-	Location    string `json:"location" yaml:"location"`
+	//Config only for AKS
+	NodeResourceGroup string `json:"nodeResourceGroup" yaml:"nodeResourceGroup"`
 }
 
 // TrimSpace removes all leading and trailing white spaces.
@@ -92,6 +93,7 @@ func (c *Config) TrimSpace() {
 	c.AADClientCertPassword = strings.TrimSpace(c.AADClientCertPassword)
 	c.Deployment = strings.TrimSpace(c.Deployment)
 	c.ClusterName = strings.TrimSpace(c.ClusterName)
+	c.NodeResourceGroup = strings.TrimSpace(c.NodeResourceGroup)
 }
 
 // CreateAzureManager creates Azure Manager object to work with Azure.
@@ -115,8 +117,8 @@ func CreateAzureManager(configReader io.Reader, discoveryOpts cloudprovider.Node
 		cfg.AADClientCertPath = os.Getenv("ARM_CLIENT_CERT_PATH")
 		cfg.AADClientCertPassword = os.Getenv("ARM_CLIENT_CERT_PASSWORD")
 		cfg.Deployment = os.Getenv("ARM_DEPLOYMENT")
-		cfg.ClusterName = os.Getenv("AZURE_CONTAINER_SERVICE_NAME")
-		cfg.Location = os.Getenv("AZURE_CONTAINER_SERVICE_LOCATION")
+		cfg.ClusterName = os.Getenv("AZURE_CLUSTER_NAME")
+		cfg.NodeResourceGroup = os.Getenv("AZURE_NODE_RESOURCE_GROUP")
 
 		useManagedIdentityExtensionFromEnv := os.Getenv("ARM_USE_MANAGED_IDENTITY_EXTENSION")
 		if len(useManagedIdentityExtensionFromEnv) > 0 {

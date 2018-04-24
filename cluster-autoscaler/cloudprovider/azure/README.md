@@ -158,7 +158,7 @@ Fill the values of cluster-autoscaler-azure secret in [cluster-autoscaler-contai
 - TenantID: `<base64-encoded-tenant-id>`
 - Deployment: `<base64-encoded-azure-initial-deploy-name>`
 - ClusterName: `<base64-encoded-clustername>`
-- NodeResourceGroup: `<base64-encoded-node-resource-group>` 
+- NodeResourceGroup: `<base64-encoded-node-resource-group>`
 
 
 > Note that all data above should be encoded with base64.
